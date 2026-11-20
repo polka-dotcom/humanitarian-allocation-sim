@@ -23,4 +23,4 @@ Python 3 with Tkinter.
 
 ## AI assistance
 
-Claude (Anthropic) was used to design and plan the tests and draft tkinter documentation
+Claude (Anthropic) was used to design and plan the tests and draft documentation
