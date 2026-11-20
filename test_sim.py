@@ -35,7 +35,7 @@ class SimTests(unittest.TestCase):
         r0 = make_req(0, "A", "medicine", 2, 100, 0)
         r1 = make_req(1, "B", "nutrition", 4, 40, 1)
         r2 = make_req(2, "A", "shelter", 1, 10, 2)
-        state = {"requests": [r0, r1, r2], "round": 0,
+        state = {"requests": [r0, r1, r2], "round": 0, "rounds": sim.ROUNDS,
                  "stock": {"medicine": 5, "shelter": 5, "nutrition": 2}}
         sim.give(state, r0, 2)                  # round 0: filled
         state["round"] = 1
@@ -55,10 +55,19 @@ class SimTests(unittest.TestCase):
         a = make_req(0, "A", "medicine", 2, 50, 0, urgency=3)
         b = make_req(1, "B", "medicine", 2, 50, 0, urgency=3)
         c = make_req(2, "C", "medicine", 2, 50, 0, urgency=1)
-        state = {"requests": [a, b, c], "round": 0, "stock": {"medicine": 2, "shelter": 0, "nutrition": 0}}
+        state = {"requests": [a, b, c], "round": 0, "rounds": sim.ROUNDS, "stock": {"medicine": 2, "shelter": 0, "nutrition": 0}}
         sim.give(state, a, 2)
         sim.give(state, b, 2)                   # no stock left, so b stays unfilled
         self.assertAlmostEqual(sim.metrics(state)["urgent_filled"], 0.5)
+
+    def test_fewer_rounds_ends_sooner_and_keeps_early_requests(self):
+        short = sim.new_game(3, 0.5, rounds=3)
+        full = sim.new_game(3, 0.5)
+        self.assertTrue(all(r["arrival"] < 3 for r in short["requests"]))
+        self.assertEqual(short["requests"], [r for r in full["requests"] if r["arrival"] < 3])
+        state, _ = sim.play(3, 0.5, fill_in_arrival_order, rounds=3)
+        self.assertTrue(sim.finished(state))
+        self.assertEqual(state["round"], 3)
 
     def test_jain_is_one_for_equal_values(self):
         self.assertAlmostEqual(sim.jain([0.5, 0.5, 0.5]), 1.0)
