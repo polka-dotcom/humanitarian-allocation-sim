@@ -3,6 +3,11 @@ import unittest
 import sim
 
 
+def make_req(i, zone, item, qty, people, arrival, urgency=1):
+    return {"id": i, "zone": zone, "item": item, "qty": qty, "urgency": urgency,
+            "people": people, "arrival": arrival, "given": 0, "filled_round": None}
+
+
 def fill_in_arrival_order(state):
     """A trivial agent used only for testing: ask for everything, oldest first."""
     return [(r, r["qty"], "test") for r in sim.pending(state)]
@@ -27,12 +32,9 @@ class SimTests(unittest.TestCase):
     def test_metrics_match_hand_calculation(self):
         # Three requests built by hand. Nutrition stock is only 2, so the
         # request for 4 can only be half filled (this also tests the stock limit).
-        def req(i, zone, item, qty, people, arrival):
-            return {"id": i, "zone": zone, "item": item, "qty": qty, "urgency": 1,
-                    "people": people, "arrival": arrival, "given": 0, "filled_round": None}
-        r0 = req(0, "A", "medicine", 2, 100, 0)
-        r1 = req(1, "B", "nutrition", 4, 40, 1)
-        r2 = req(2, "A", "shelter", 1, 10, 2)
+        r0 = make_req(0, "A", "medicine", 2, 100, 0)
+        r1 = make_req(1, "B", "nutrition", 4, 40, 1)
+        r2 = make_req(2, "A", "shelter", 1, 10, 2)
         state = {"requests": [r0, r1, r2], "round": 0,
                  "stock": {"medicine": 5, "shelter": 5, "nutrition": 2}}
         sim.give(state, r0, 2)                  # round 0: filled
@@ -47,6 +49,16 @@ class SimTests(unittest.TestCase):
         self.assertAlmostEqual(m["delay"], (0 + 9 + 1) / 3)
         # zone A ratio 1.0, zone B ratio 0.5, zone C skipped: (1.5)^2 / (2 x 1.25)
         self.assertAlmostEqual(m["fairness"], 0.9)
+
+    def test_urgent_filled_counts_only_urgency_3(self):
+        # Two urgency 3 requests: one filled, one not. The urgency 1 request is ignored.
+        a = make_req(0, "A", "medicine", 2, 50, 0, urgency=3)
+        b = make_req(1, "B", "medicine", 2, 50, 0, urgency=3)
+        c = make_req(2, "C", "medicine", 2, 50, 0, urgency=1)
+        state = {"requests": [a, b, c], "round": 0, "stock": {"medicine": 2, "shelter": 0, "nutrition": 0}}
+        sim.give(state, a, 2)
+        sim.give(state, b, 2)                   # no stock left, so b stays unfilled
+        self.assertAlmostEqual(sim.metrics(state)["urgent_filled"], 0.5)
 
     def test_jain_is_one_for_equal_values(self):
         self.assertAlmostEqual(sim.jain([0.5, 0.5, 0.5]), 1.0)
