@@ -82,17 +82,58 @@ def word(x):
     return max(levels, key=levels.get)
 
 
-def fuzzy(state):
-    # highest fuzzy priority first
+def rank(state):
+    # pending requests with fuzzy priority and wait, highest priority first
     scored = []
     for r in sim.pending(state):
         wait = state["round"] - r["arrival"]
         scored.append((priority(r["urgency"], r["people"], wait), r, wait))
     scored.sort(key=lambda s: (-s[0], s[1]["id"]))
-    return [(r, r["qty"] - r["given"],
-             f"priority {p:.2f}: urgency {word((r['urgency'] - 1) / 2)}, "
-             f"people {word(r['people'] / 100)}, wait {word(min(wait / 5, 1))}")
-            for p, r, wait in scored]
+    return scored
 
 
-AGENTS = {"FCFS": fcfs, "Random": random_order, "Greedy": greedy, "Fuzzy": fuzzy}
+def why(p, r, wait):
+    return (f"priority {p:.2f}: urgency {word((r['urgency'] - 1) / 2)}, "
+            f"people {word(r['people'] / 100)}, wait {word(min(wait / 5, 1))}")
+
+
+def fuzzy(state):
+    return [(r, r["qty"] - r["given"], why(p, r, wait)) for p, r, wait in rank(state)]
+
+
+NORMAL_AT = 0.7
+SCARCE_AT = 0.3
+CRITICAL_PRIORITY = 0.6
+
+
+def mode(state):
+    # stock left divided by units still needed by pending requests
+    need = sum(r["qty"] - r["given"] for r in sim.pending(state))
+    if need == 0:
+        return "normal"
+    ratio = sum(state["stock"].values()) / need
+    if ratio >= NORMAL_AT:
+        return "normal"
+    if ratio >= SCARCE_AT:
+        return "scarce"
+    return "critical"
+
+
+def fuzzy_fsm(state):
+    # fuzzy order, mode decides how much each request gets this round
+    current = mode(state)
+    plan = []
+    for p, r, wait in rank(state):
+        needed = r["qty"] - r["given"]
+        if current == "scarce":
+            units = min(needed, (r["qty"] + 1) // 2)
+        elif current == "critical":
+            units = needed if p >= CRITICAL_PRIORITY else 0
+        else:
+            units = needed
+        plan.append((r, units, f"mode {current}, " + why(p, r, wait)))
+    return plan
+
+
+AGENTS = {"FCFS": fcfs, "Random": random_order, "Greedy": greedy,
+          "Fuzzy": fuzzy, "Fuzzy+FSM": fuzzy_fsm}
